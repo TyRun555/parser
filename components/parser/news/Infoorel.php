@@ -133,7 +133,7 @@ class Infoorel extends TyRunBaseParser implements ParserInterface
                             break;
                         }
                     }
-                    if ($pos !== -1) {
+                    if ($pos !== -1 && $description) {
                         array_splice($newPost->items, $pos, 1);
                         $newPost->description = $description;
                     }

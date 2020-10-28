@@ -80,7 +80,8 @@ class OmskPress extends TyRunBaseParser implements ParserInterface
             $newPost = new NewsPost(
                 self::class,
                 $node->filter('title')->text(),
-                self::prepareDescription($node->filter('description')->text()),
+                self::prepareDescription($node->filter('description')->text(),
+                    '/(.*)\.(.*)(\[&#8230;]|Сообщение)(.*)ОмскПресс\./'),
                 self::stringToDateTime($node->filter('pubDate')->text()),
                 $node->filter('link')->text(),
                 null
@@ -269,23 +270,6 @@ class OmskPress extends TyRunBaseParser implements ParserInterface
                     null
                 ));
         }
-    }
-
-
-    /**
-     * В RSS битый дескрипшн, в конце всегда идет коприайт, в виде ссылки на сайт
-     * Например ( после обработки @param string $description
-     * @return mixed
-     * @see Helper::prepareString ) :
-     * [&#8230;] The post В Тверской области лишили прав водителя, ездившего " под кайфом" first appeared on TVTver.ru.
-     * Обрезаем описание до последнего законченного предложения
-     *
-     */
-    private static function prepareDescription(string $description): string
-    {
-        $description = Helper::prepareString($description);
-        preg_match('/(.*)\.(.*)(\[&#8230;]|Сообщение)(.*)ОмскПресс\./', $description, $matches);
-        return !empty($matches[1]) ? $matches[1] : $description;
     }
 
 }

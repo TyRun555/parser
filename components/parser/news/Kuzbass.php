@@ -12,29 +12,26 @@ use Exception;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
- * Парсер новостей из RSS ленты www.sutynews.ru
+ * Парсер новостей из RSS ленты kuzbass85.ru
  *
- * На страницах новостей может быть галерея
- * Описание может пересекаться с содержимым статьи
- * (используем дял парсинга тегов <p> метод parseDescriptionIntersectParagraph)
+ *  В RSS отсутствует дата публикации
  */
-
-class SutyNews extends TyRunBaseParser implements ParserInterface
+class Kuzbass extends TyRunBaseParser implements ParserInterface
 {
     const USER_ID = 2;
     const FEED_ID = 2;
 
-    const MAIN_PAGE_URI = 'https://www.sutynews.ru';
+    const MAIN_PAGE_URI = 'http://kuzbass85.ru';
 
     /**
      * CSS класс, где хранится содержимое новости
      */
-    const BODY_CONTAINER_CSS_SELECTOR = '.read_block_content';
+    const BODY_CONTAINER_CSS_SELECTOR = '.inner_article';
 
     /**
      * CSS  класс для параграфов - цитат
      */
-    const QUOTE_TAG = 'em';
+    const QUOTE_TAG = 'blockquote';
 
     /**
      * Классы эоементов, которые не нужно парсить, например блоки с рекламой и т.п.
@@ -45,13 +42,13 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
     /**
      * Класс элемента после которого парсить страницу не имеет смысла (контент статьи закончился)
      */
-    const CUT_CSS_CLASS = 'carousel-nav';
+    const CUT_CSS_CLASS = '';
 
 
     /**
      * Ссылка на RSS фид (XML)
      */
-    const FEED_URL = 'https://www.sutynews.ru/rss.xml';
+    const FEED_URL = 'http://kuzbass85.ru/rss';
 
     /**
      *  Максимальная глубина для парсинга <div> тегов
@@ -81,40 +78,42 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
         $rss = $curl->get(self::FEED_URL);
 
         $crawler = new Crawler($rss);
-        $crawler->filter('rss channel item')->slice(0, self::MAX_NEWS_COUNT)->each(function (Crawler $node) use (&$curl, &$posts) {
+        $crawler->filter('rss channel item')->slice(0, self::MAX_NEWS_COUNT)->each(function (Crawler $node) use (&$pubTimeArray, &$curl, &$posts) {
 
             $newPost = new NewsPost(
                 self::class,
                 $node->filter('title')->text(),
-                '-',
-                self::stringToDateTime($node->filter('pubDate')->text()),
+                self::prepareDescription($node->filter('description')->text(),
+                    '/(.*)\.(.*)(&#8230;)(.*)/'),
+                date('Y-m-d H:i:s'),
                 $node->filter('link')->text(),
-                $node->filter('enclosure')->attr('url')
+                self::urlEncode($node->filter('enclosure')->attr('url'))
             );
+
+            /**
+             * Предложения содержащиеся в описании (для последующей проверки при парсинга тела новости)
+             */
+            $descriptionSentences = explode('. ', html_entity_decode($newPost->description));
 
             /**
              * Получаем полный html новости
              */
             $newsContent = $curl->get($newPost->original);
 
+
             if (!empty($newsContent)) {
                 $newsContent = (new Crawler($newsContent))->filter(self::BODY_CONTAINER_CSS_SELECTOR);
 
-                $newPost->description = $newsContent->filter('p')->first()->filter('b')->text();
-
-                /**
-                 * Предложения содержащиеся в описании (для последующей проверки при парсинга тела новости)
-                 */
-                $descriptionSentences = explode(
-                    '. ',
-                    html_entity_decode(trim($newPost->description, '  \t\n\r\0\x0B.'))
-                );
+                $authorString = $newsContent->filter('.author_info')->text();
+                $pubDate = self::rusMonthToIndex(explode(' | ', $authorString)[0]);
+                $dateString = $pubDate . ' ' . date('H:i:s O');
+                $newPost->createDate = self::stringToDateTime($dateString, 'd n Y H:i:s O', true);;
 
                 /**
                  * Текст статьи, может содержать цитаты ( все полезное содержимое в тегах <p> )
                  * Не знаю нужно или нет, но сделал более универсально, с рекурсией
                  */
-                $articleContent = $newsContent->children();
+                $articleContent = $newsContent->filter('.font_size_options')->children();
                 $stopParsing = false;
                 if ($articleContent->count()) {
                     $articleContent->each(function ($node) use ($newPost, &$stopParsing, $descriptionSentences) {
@@ -164,27 +163,19 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
 
         switch ($node->nodeName()) {
             case 'div': //запускаем рекурсивно на дочерние ноды, если есть, если нет то там обычно ненужный шлак
-                /**
-                 * Новость может содержать галерею (блок с классом field-type-image),
-                 * парсим только изображения из таких блоков
-                 */
-                if (stristr($node->attr('class'), 'carousel-main')) {
-                    $images = $node->filter('img');
-                    if ($images->count()) {
-                        $images->each(function (Crawler $node) use (&$newPost) {
-                            self::parseImage($node, $newPost, 'data-flickity-lazyload');
-                        });
-                    }
-                } else {
-                    $nodes = $node->children();
-                    if ($nodes->count()) {
-                        $nodes->each(function ($node) use ($newPost, $maxDepth, &$stopParsing, &$descriptionSentences) {
-                            self::parseNode($node, $newPost, $maxDepth, $stopParsing, $descriptionSentences);
-                        });
-                    }
+                $nodes = $node->children();
+                if ($nodes->count()) {
+                    $nodes->each(function ($node) use ($newPost, $maxDepth, &$stopParsing, &$descriptionSentences) {
+                        self::parseNode($node, $newPost, $maxDepth, $stopParsing, $descriptionSentences);
+                    });
                 }
-
                 break;
+            case 'h3':
+            case 'h4':
+            case 'h5':
+                self::parseHeader($node, $newPost);
+                break;
+            case 'blockquote':
             case 'p':
                 self::parseDescriptionIntersectParagraph($node, $newPost, $descriptionSentences);
                 if ($nodes = $node->children()) {
@@ -194,7 +185,7 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
                 }
                 break;
             case 'img':
-                self::parseImage($node, $newPost, 'data-flickity-lazyload');
+                self::parseImage($node, $newPost);
                 break;
             case 'video':
                 $videoId = self::extractYouTubeId($node->filter('source')->first()->attr('src'));

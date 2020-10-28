@@ -12,24 +12,20 @@ use Exception;
 use Symfony\Component\DomCrawler\Crawler;
 
 /**
- * Парсер новостей из RSS ленты www.sutynews.ru
+ * Парсер новостей из RSS ленты yamal-region.tv
  *
- * На страницах новостей может быть галерея
- * Описание может пересекаться с содержимым статьи
- * (используем дял парсинга тегов <p> метод parseDescriptionIntersectParagraph)
  */
-
-class SutyNews extends TyRunBaseParser implements ParserInterface
+class YamalRegion extends TyRunBaseParser implements ParserInterface
 {
     const USER_ID = 2;
     const FEED_ID = 2;
 
-    const MAIN_PAGE_URI = 'https://www.sutynews.ru';
+    const MAIN_PAGE_URI = 'https://yamal-region.tv';
 
     /**
      * CSS класс, где хранится содержимое новости
      */
-    const BODY_CONTAINER_CSS_SELECTOR = '.read_block_content';
+    const BODY_CONTAINER_CSS_SELECTOR = '.page_content';
 
     /**
      * CSS  класс для параграфов - цитат
@@ -45,13 +41,13 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
     /**
      * Класс элемента после которого парсить страницу не имеет смысла (контент статьи закончился)
      */
-    const CUT_CSS_CLASS = 'carousel-nav';
+    const CUT_CSS_CLASS = '';
 
 
     /**
      * Ссылка на RSS фид (XML)
      */
-    const FEED_URL = 'https://www.sutynews.ru/rss.xml';
+    const FEED_URL = 'https://yamal-region.tv/xml/news_rss.xml';
 
     /**
      *  Максимальная глубина для парсинга <div> тегов
@@ -86,11 +82,20 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
             $newPost = new NewsPost(
                 self::class,
                 $node->filter('title')->text(),
-                '-',
+                $node->filter('description')->text(),
                 self::stringToDateTime($node->filter('pubDate')->text()),
                 $node->filter('link')->text(),
-                $node->filter('enclosure')->attr('url')
+                null
             );
+
+            /**
+             * Предложения содержащиеся в описании (для последующей проверки при парсинга тела новости)
+             */
+            $descriptionSentences = explode('. ', html_entity_decode($newPost->description));
+            if (count($descriptionSentences) > 4) {
+                $descriptionSentences = array_slice($descriptionSentences, 0, 4);
+                $newPost->description = implode('. ', $descriptionSentences);
+            }
 
             /**
              * Получаем полный html новости
@@ -100,21 +105,11 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
             if (!empty($newsContent)) {
                 $newsContent = (new Crawler($newsContent))->filter(self::BODY_CONTAINER_CSS_SELECTOR);
 
-                $newPost->description = $newsContent->filter('p')->first()->filter('b')->text();
-
-                /**
-                 * Предложения содержащиеся в описании (для последующей проверки при парсинга тела новости)
-                 */
-                $descriptionSentences = explode(
-                    '. ',
-                    html_entity_decode(trim($newPost->description, '  \t\n\r\0\x0B.'))
-                );
-
                 /**
                  * Текст статьи, может содержать цитаты ( все полезное содержимое в тегах <p> )
                  * Не знаю нужно или нет, но сделал более универсально, с рекурсией
                  */
-                $articleContent = $newsContent->children();
+                $articleContent = $newsContent->filter('.news_content .text')->children();
                 $stopParsing = false;
                 if ($articleContent->count()) {
                     $articleContent->each(function ($node) use ($newPost, &$stopParsing, $descriptionSentences) {
@@ -164,26 +159,15 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
 
         switch ($node->nodeName()) {
             case 'div': //запускаем рекурсивно на дочерние ноды, если есть, если нет то там обычно ненужный шлак
-                /**
-                 * Новость может содержать галерею (блок с классом field-type-image),
-                 * парсим только изображения из таких блоков
-                 */
-                if (stristr($node->attr('class'), 'carousel-main')) {
-                    $images = $node->filter('img');
-                    if ($images->count()) {
-                        $images->each(function (Crawler $node) use (&$newPost) {
-                            self::parseImage($node, $newPost, 'data-flickity-lazyload');
-                        });
-                    }
+            case 'span':
+                $nodes = $node->children();
+                if ($nodes->count()) {
+                    $nodes->each(function ($node) use ($newPost, $maxDepth, &$stopParsing, &$descriptionSentences) {
+                        self::parseNode($node, $newPost, $maxDepth, $stopParsing, $descriptionSentences);
+                    });
                 } else {
-                    $nodes = $node->children();
-                    if ($nodes->count()) {
-                        $nodes->each(function ($node) use ($newPost, $maxDepth, &$stopParsing, &$descriptionSentences) {
-                            self::parseNode($node, $newPost, $maxDepth, $stopParsing, $descriptionSentences);
-                        });
-                    }
+                    self::parseDescriptionIntersectParagraph($node, $newPost, $descriptionSentences);
                 }
-
                 break;
             case 'p':
                 self::parseDescriptionIntersectParagraph($node, $newPost, $descriptionSentences);
@@ -194,7 +178,7 @@ class SutyNews extends TyRunBaseParser implements ParserInterface
                 }
                 break;
             case 'img':
-                self::parseImage($node, $newPost, 'data-flickity-lazyload');
+                self::parseImage($node, $newPost);
                 break;
             case 'video':
                 $videoId = self::extractYouTubeId($node->filter('source')->first()->attr('src'));

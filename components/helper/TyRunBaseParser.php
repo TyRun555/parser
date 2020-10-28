@@ -2,6 +2,7 @@
 
 namespace app\components\helper;
 
+use app\components\Helper;
 use app\components\parser\NewsPost;
 use app\components\parser\NewsPostItem;
 use DateTime;
@@ -102,19 +103,22 @@ abstract class TyRunBaseParser
      */
     protected static function parseImage(Crawler $node, NewsPost $newPost, $lazySrcAttr = 'data-src'): void
     {
-        $src = self::getProperImageSrc($node, $lazySrcAttr);
+        $src = static::getProperImageSrc($node, $lazySrcAttr);
         if ($src && $src != $newPost->image) {
-            $newPost->addItem(
-                new NewsPostItem(
-                    NewsPostItem::TYPE_IMAGE,
-                    null,
-                    $src,
-                    null,
-                    null,
-                    null
-                ));
+            if (empty($newPost->image)) {
+                $newPost->image = $src;
+            } else {
+                $newPost->addItem(
+                    new NewsPostItem(
+                        NewsPostItem::TYPE_IMAGE,
+                        null,
+                        $src,
+                        null,
+                        null,
+                        null
+                    ));
+            }
         }
-
     }
 
     /**
@@ -242,4 +246,24 @@ abstract class TyRunBaseParser
         return str_replace(['%3A', '%2F'], [':', '/'], rawurlencode($url));
     }
 
+    /**
+     * @param string $description
+     * @param string $pattern
+     * @return string
+     *
+     * Если В RSS битый дескрипшн:
+     *  - например в конце идет коприайт, в виде ссылки на сайт:
+     * [&#8230;] The post В Тверской области лишили прав водителя, ездившего " под кайфом" first appeared on TVTver.ru.
+     * - Либо есть незаконченное предложение
+     *
+     * То обрезаем описание до последнего законченного предложения
+     */
+    protected static function prepareDescription(string $description, $pattern = ''): string
+    {
+        $description = Helper::prepareString($description);
+        if ($pattern) {
+            preg_match($pattern, $description, $matches);
+        }
+        return !empty($matches[1]) ? html_entity_decode($matches[1]) : html_entity_decode($description);
+    }
 }

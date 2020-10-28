@@ -245,4 +245,25 @@ abstract class TyRunBaseParser
     {
         return str_replace(['%3A', '%2F'], [':', '/'], rawurlencode($url));
     }
+
+    /**
+     * @param string $description
+     * @param string $pattern
+     * @return string
+     *
+     * Если В RSS битый дескрипшн:
+     *  - например в конце идет коприайт, в виде ссылки на сайт:
+     * [&#8230;] The post В Тверской области лишили прав водителя, ездившего " под кайфом" first appeared on TVTver.ru.
+     * - Либо есть незаконченное предложение
+     *
+     * То обрезаем описание до последнего законченного предложения
+     */
+    protected static function prepareDescription(string $description, $pattern = ''): string
+    {
+        $description = Helper::prepareString($description);
+        if ($pattern) {
+            preg_match($pattern, $description, $matches);
+        }
+        return !empty($matches[1]) ? html_entity_decode($matches[1]) : html_entity_decode($description);
+    }
 }

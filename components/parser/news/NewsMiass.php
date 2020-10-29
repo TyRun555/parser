@@ -239,9 +239,7 @@ class NewsMiass extends TyRunBaseParser implements ParserInterface
         if (stristr($node->attr('src'), 'foto.gif')) {
             return false;
         }
-        $src = $node->attr('src') ?? $node->attr($lazySrcAttr);
-        $src = self::absoluteUrl($src);
-        return $src ? self::urlEncode($src) : false;
+        return parent::getProperImageSrc($node, $lazySrcAttr);
     }
 
 }

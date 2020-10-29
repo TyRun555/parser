@@ -103,7 +103,7 @@ abstract class TyRunBaseParser
      */
     protected static function parseImage(Crawler $node, NewsPost $newPost, $lazySrcAttr = 'data-src'): void
     {
-        $src = self::getProperImageSrc($node, $lazySrcAttr);
+        $src = static::getProperImageSrc($node, $lazySrcAttr);
         if ($src && $src != $newPost->image) {
             if (empty($newPost->image)) {
                 $newPost->image = $src;

@@ -20,6 +20,8 @@ class ArbuzToday extends TyRunBaseParser implements ParserInterface
     const USER_ID = 2;
     const FEED_ID = 2;
 
+    const MAIN_PAGE_URI = 'https://arbuztoday.ru';
+
     /**
      * CSS класс, где хранится содержимое новости
      */
@@ -104,7 +106,7 @@ class ArbuzToday extends TyRunBaseParser implements ParserInterface
                 $mainImage = $newsContent->filter('.news-single-prev img');
                 if ($mainImage->count()) {
                     if ($mainImage->attr('src')) {
-                        $newPost->image = $mainImage->attr('src');
+                        $newPost->image = self::urlEncode($mainImage->attr('src'));
                     }
                 }
 
@@ -187,7 +189,7 @@ class ArbuzToday extends TyRunBaseParser implements ParserInterface
                 }
                 break;
             case 'p':
-                self::parseParagraph($node, $newPost, $descriptionSentences);
+                self::parseDescriptionIntersectParagraph($node, $newPost, $descriptionSentences);
                 if ($nodes = $node->children()) {
                     $nodes->each(function ($node) use ($newPost, $maxDepth, &$stopParsing) {
                         self::parseNode($node, $newPost, $maxDepth, $stopParsing);
@@ -220,49 +222,6 @@ class ArbuzToday extends TyRunBaseParser implements ParserInterface
         }
 
 
-    }
-
-    /**
-     * Парсер для тегов <p>
-     * Дополнительно сверяем содержимое тегов с описанием новости (по предложениям), дубли не добавляем
-     * @param Crawler $node текущий элемент для парсинга
-     * @param NewsPost $newPost объект новости
-     * @param array $descriptionSentences массив предложений описания новости
-     */
-    private static function parseParagraph(Crawler $node, NewsPost $newPost, array $descriptionSentences): void
-    {
-        $nodeSentences = array_map(function ($item) {
-            return !empty($item) ? trim($item, '  \t\n\r\0\x0B.') : false;
-        }, explode('.', $node->text()));
-        $intersect = array_intersect($nodeSentences, $descriptionSentences);
-
-        /**
-         * Если в тексте есть хоть одно уникальное предложение ( по сравнению с описанием новости )
-         */
-        if (!empty($node->text()) && count($intersect) < count($nodeSentences)) {
-            /**
-             * Дополнительно проверяем, что оставшийся текст не является подстрокой описания
-             */
-            $text = implode('. ', array_diff($nodeSentences, $intersect));
-            if (empty($text) || stristr($newPost->description, $text)) {
-                return;
-            }
-
-            $type = NewsPostItem::TYPE_TEXT;
-            if ($node->nodeName() == self::QUOTE_TAG) {
-                $type = NewsPostItem::TYPE_QUOTE;
-            }
-
-            $newPost->addItem(
-                new NewsPostItem(
-                    $type,
-                    $text,
-                    null,
-                    null,
-                    null,
-                    null
-                ));
-        }
     }
 
 }

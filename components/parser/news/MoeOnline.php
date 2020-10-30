@@ -256,22 +256,4 @@ class MoeOnline extends TyRunBaseParser implements ParserInterface
         }
     }
 
-
-
-    /**
-     * В RSS битый дескрипшн, в конце всегда идет коприайт, в виде ссылки на сайт
-     * Например ( после обработки @see Helper::prepareString ) :
-     * [&#8230;] The post В Тверской области лишили прав водителя, ездившего " под кайфом" first appeared on TVTver.ru.
-     * Обрезаем описание до последнего законченного предложения
-     *
-     * @param string $description
-     * @return mixed
-     */
-    private static function prepareDescription(string $description): string
-    {
-        $description = Helper::prepareString($description);
-        preg_match('/(.*)\.(.*)(\[&#8230;]|Сообщение)(.*)ОмскПресс\./', $description, $matches);
-        return $matches[1];
-    }
-
 }

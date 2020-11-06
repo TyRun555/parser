@@ -251,7 +251,10 @@ abstract class TyRunBaseParser
             }
 
             $type = NewsPostItem::TYPE_TEXT;
-            if ($node->nodeName() == static::QUOTE_TAG) {
+            if ($node->nodeName() == static::QUOTE_TAG
+                || stristr($node->attr('class'), static::QUOTE_TAG)
+                || $node->filter(static::QUOTE_TAG)->count()
+            ) {
                 $type = NewsPostItem::TYPE_QUOTE;
             }
 

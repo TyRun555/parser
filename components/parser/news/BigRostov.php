@@ -10,6 +10,7 @@ use app\components\parser\NewsPostItem;
 use app\components\parser\ParserInterface;
 use Exception;
 use Symfony\Component\DomCrawler\Crawler;
+use Throwable;
 
 /**
  * Парсер новостей из RSS ленты big-rostov.ru
@@ -198,15 +199,16 @@ class BigRostov extends TyRunBaseParser implements ParserInterface
                 break;
             case 'a':
                 $linkImage = $node->filter('img');
-                if ($linkImage->count() && $linkImage->attr('src') != $node->attr('href') ||
-                    !$linkImage->count()
-                ) {
+                if ($linkImage->count() == 0) {
                     self::parseLink($node, $newPost);
-                }
-                if ($nodes = $node->children()) {
-                    $nodes->each(function ($node) use ($newPost, $maxDepth, &$stopParsing) {
-                        self::parseNode($node, $newPost, $maxDepth, $stopParsing);
-                    });
+                } else if ($linkImage->count()) {
+                    self::parseImage($linkImage, $newPost, "data-lazy-src");
+                } else {
+                    if ($nodes = $node->children()) {
+                        $nodes->each(function ($node) use ($newPost, $maxDepth, &$stopParsing) {
+                            self::parseNode($node, $newPost, $maxDepth, $stopParsing);
+                        });
+                    }
                 }
                 break;
             case 'iframe':
@@ -233,7 +235,7 @@ class BigRostov extends TyRunBaseParser implements ParserInterface
      */
     protected static function getProperImageSrc(Crawler $node, string $lazySrcAttr): ?string
     {
-        $src = !stristr($node->attr('src'), '1x1.trans.gif') ?: $node->attr($lazySrcAttr);
+        $src = !stristr($node->attr('src'), '1x1.trans.gif') ? $node->attr('src') : $node->attr($lazySrcAttr);
         $src = self::absoluteUrl($src);
         return $src ? self::urlEncode($src) : false;
     }
